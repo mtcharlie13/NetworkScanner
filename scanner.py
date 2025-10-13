@@ -1,28 +1,63 @@
 import ipaddress
+import os
+import struct
 import sys
+import time
 
-# class ICMPPing:
-    # Create ICMP socket and set timeout
-    # def __init__(self, timeout):
+# calculate checksum
+def get_checksum(data):
+    if len(data) % 2:
+        data += b'\x00'# make data length even
 
-    # Calculate ICMP checksum
-    # def checksum(self, data):
+    checksum = 0
+    for i in range(0, len(data), 2):
+        data = (data[i] << 8) + data[i + 1]# combine data into 16-bit word
+        checksum += data
+        checksum = (checksum & 0xffff) + (checksum >> 16)
 
-    # Send ICMP Echo Request to target
+    # invert bits and return 16 bits
+    return ~checksum & 0xffff
+
+class ICMPPing:
+    # create ICMP packet and ping target host
+    def __init__(self, target_addr):
+        self.packet_ID = os.getpid() & 0xffff
+        self.timeout = 2
+        self.sequence_num = 0
+
+        packet = self.create_packet
+
+    # create ICMP packet
+    def create_packet(self):
+        header = struct.pack('!BBHHH', 8, 0, 0, self.packet_ID, self.sequence_num)
+
+        payload = struct.pack('!d', time.time())# record time sent
+
+        extra_data_len = 48# length needed to reach 64 bytes
+        extra_data = str.encode(extra_data_len * 'A')
+
+        checksum = get_checksum(header + payload + extra_data)
+
+        # reconstruct packet with checksum
+        header = struct.pack('!BBHHH', 8, 0, checksum, self.packet_ID, self.sequence_num)
+
+        return header + payload + extra_data
+
+    # send ICMP Echo Request to target
     # def send_request(self, target_addr):
 
-    # Receive ICMP Echo Reply from target
+    # receive ICMP Echo Reply from target
     # def receive_reply(self, target_addr):
 
-    # Ping host specified by address
+    # ping host specified by address
     # def ping_host(self, target_addr):
 
 class NetworkScanner:
-    # Scan a single host and output address if host is active
+    # scan a single host and output address if host is active
     def scan_host(self, target_addr):
         print(target_addr)
 
-    # Scan each host in network range
+    # scan each host in network range
     def scan_network(self, network_addr):
         # TODO check network address is in the correct format
         
