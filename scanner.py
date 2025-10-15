@@ -6,8 +6,6 @@ import sys
 import time
 import traceback
 
-# TODO ckeck administrator privileges are enabled
-
 # calculate checksum
 def get_checksum(data):
     if len(data) % 2:
@@ -58,7 +56,8 @@ class ICMPPing:
         try:
             icmp_socket = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_IP)
         except socket.error as e:
-            traceback.print_exception(e)
+            print("Error: script requires administator privileges")
+            sys.exit()# cannot access sockets without admin privileges on Windows
             return
 
         icmp_socket.settimeout(self.timeout)
@@ -89,10 +88,12 @@ class ICMPPing:
         finally:
             icmp_socket.close()
 
-        # TODO check source and destination addresses match
-
+        src_addr = src_addr[0]# source address from Reply is currently stored in a tuple
+        if src_addr != dst_addr:
+            return# addresses do not match
+            
         # parse Echo Reply
-        ip_header = reply_packet[:20]# first 20 bytes of reply packet is the IP header
+        ip_header = reply_packet[:20]# first 20 bytes of Reply is the IP header
         version_and_ihl, tos, packet_len, identification, flags_and_offset, ttl, protocol, checksum, src_ip, dst_ip = struct.unpack('!BBHHHBBH4s4s', ip_header)
 
         ip_header_len = (version_and_ihl & 0x0f) * 4# bit masking to extract IP header length
@@ -100,12 +101,14 @@ class ICMPPing:
         icmp_header = reply_packet[ip_header_len:ip_header_len + 8]
         icmp_type, code, checksum, packet_id, sequence_num = struct.unpack('!BBHHH', icmp_header)
 
-        # TODO check ID and sequence numbers match
+        if self.packet_ID != packet_id or self.sequence_num != sequence_num:
+            return# ID and sequence numbers do not match between Request and Reply
 
-        print('Reply received from %s' % (dst_addr))
+        print('Reply received from %s' % (src_addr))
 
 target_addr = sys.argv[1]
 ping = ICMPPing(target_addr)
+
 
 class NetworkScanner:
     # scan a single host and output address if host is active
