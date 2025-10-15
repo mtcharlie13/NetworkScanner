@@ -20,20 +20,17 @@ def get_checksum(data):
     # invert bits and return 16 bits
     return ~checksum & 0xffff
 
+
 class ICMPPing:
-    # create ICMP packet and ping target host
     def __init__(self, target_addr):
-        self.packet_ID = os.getpid() & 0xffff
+        self.packet_id = os.getpid() & 0xffff
         self.timeout = 2
         self.sequence_num = 0
-
-        packet = self.create_packet()
-
-        self.ping_host(target_addr, packet)
+        self.packet = self.create_packet()
 
     # create ICMP packet
     def create_packet(self):
-        header = struct.pack('!BBHHH', 8, 0, 0, self.packet_ID, self.sequence_num)
+        header = struct.pack('!BBHHH', 8, 0, 0, self.packet_id, self.sequence_num)
 
         extra_data_len = 56# length needed to reach 64 bytes
         extra_data = str.encode(extra_data_len * 'A')
@@ -41,16 +38,19 @@ class ICMPPing:
         checksum = get_checksum(header + extra_data)
 
         # reconstruct packet with checksum
-        header = struct.pack('!BBHHH', 8, 0, checksum, self.packet_ID, self.sequence_num)
+        header = struct.pack('!BBHHH', 8, 0, checksum, self.packet_id, self.sequence_num)
 
         return header + extra_data
 
     # set up socket and ping host specified by address
-    def ping_host(self, target_addr, packet):
-        try:
-            dst_addr = socket.gethostbyname(target_addr)
-        except socket.gaierror as e:
-            print('Error: cannot resolve hostname %s' % (target_addr))
+    def ping_host(self, target_addr):
+        if (type(target_addr) == str):# target can also be identified by hostname
+            try:
+                dst_addr = socket.gethostbyname(target_addr)
+            except socket.gaierror as e:
+                print('Error: cannot resolve hostname %s' % (target_addr))
+        else:
+            dst_addr = str(target_addr)# address currently in IPv4 format
 
         # create ICMP socket and set timeout
         try:
@@ -64,7 +64,7 @@ class ICMPPing:
 
         # send ICMP Echo Request to target
         try:
-            bytes_sent = icmp_socket.sendto(packet, (dst_addr, 0))
+            bytes_sent = icmp_socket.sendto(self.packet, (dst_addr, 0))
             time_sent = time.time()
             print('Sent %d bytes to %s' % (bytes_sent, dst_addr))
         except socket.error as e:
@@ -101,27 +101,36 @@ class ICMPPing:
         icmp_header = reply_packet[ip_header_len:ip_header_len + 8]
         icmp_type, code, checksum, packet_id, sequence_num = struct.unpack('!BBHHH', icmp_header)
 
-        if self.packet_ID != packet_id or self.sequence_num != sequence_num:
+        if self.packet_id != packet_id or self.sequence_num != sequence_num:
             return# ID and sequence numbers do not match between Request and Reply
 
-        print('Reply received from %s' % (src_addr))
-
-target_addr = sys.argv[1]
-ping = ICMPPing(target_addr)
+        return True# Echo Reply was received from target and parsed successfully 
 
 
 class NetworkScanner:
-    # scan a single host and output address if host is active
-    def scan_host(self, target_addr):
-        print(target_addr)
-
     # scan each host in network range
     def scan_network(self, network_addr):
-        # TODO check network address is in the correct format
-        
-        addr_count = 2 ** (32 - int(network_addr.split('/')[1]))
-        print('Scanning %d hosts on %s...' % (addr_count, network_addr))
+        responses = 0
 
-        network = ipaddress.ip_network(network_addr, strict=False)
+        try:
+            addr_count = 2 ** (32 - int(network_addr.split('/')[1]))
+            print('Scanning %d hosts on %s...' % (addr_count, network_addr))
+            network = ipaddress.ip_network(network_addr, strict=False)
+        except ValueError as e:
+            print('Error: input must be in CIDR notation')
+            return
+        
         for addr in network.hosts():
-            self.scan_host(addr)
+            ping = ICMPPing(addr)
+            if ping.ping_host(addr):
+                print('Found active host: %s' % (addr))
+                responses += 1
+        
+        if responses == 1:
+            print('Scan complete: 1 active host found on %s' % (network_addr))
+        else:
+            print('Scan complete: %d active hosts found on %s' % (responses, network_addr))
+
+network_addr = sys.argv[1]
+scanner = NetworkScanner()
+scanner.scan_network(network_addr)
