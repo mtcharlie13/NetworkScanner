@@ -1,8 +1,10 @@
 import ipaddress
 import os
+import queue
 import socket
 import struct
 import sys
+import threading
 import time
 import traceback
 
@@ -108,6 +110,24 @@ class ICMPPing:
 
 
 class NetworkScanner:
+    def __init__(self, max_threads):
+        self.max_threads = max_threads
+        self.active_hosts = []
+        self.lock = threading.Lock()
+        self.host_queue = queue.Queue()
+
+    def worker(self):
+        while not self.host_queue.empty():
+            addr = self.host_queue.get(timeout=2)
+            ping = ICMPPing(addr)
+
+            if ping.ping_host(addr):
+                print('Found active host: %s' % (addr))
+                with self.lock:
+                    self.active_hosts.append(addr)
+
+            self.host_queue.task_done()
+
     # scan each host in network range
     def scan_network(self, network_addr):
         responses = 0
@@ -120,11 +140,26 @@ class NetworkScanner:
             print('Error: input must be in CIDR notation')
             return
         
+        # queue hosts in network range
         for addr in network.hosts():
-            ping = ICMPPing(addr)
-            if ping.ping_host(addr):
-                print('Found active host: %s' % (addr))
-                responses += 1
+            self.host_queue.put(addr)
+        
+        # start threading
+        threads = []
+        for i in range(min(self.max_threads, self.host_queue.qsize())):
+            thread = threading.Thread(target=self.worker)
+            thread.daemon = True# exits when main thread exits
+            thread.start()
+            threads.append(thread)
+
+        # wait for hosts to be processed
+        self.host_queue.join()
+
+        # wait for threads to finish
+        for thread in threads:
+            thread.join()
+
+        responses = len(self.active_hosts)
         
         if responses == 1:
             print('Scan complete: 1 active host found on %s' % (network_addr))
@@ -132,5 +167,5 @@ class NetworkScanner:
             print('Scan complete: %d active hosts found on %s' % (responses, network_addr))
 
 network_addr = sys.argv[1]
-scanner = NetworkScanner()
+scanner = NetworkScanner(50)
 scanner.scan_network(network_addr)
