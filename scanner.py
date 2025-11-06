@@ -24,7 +24,7 @@ def get_checksum(data):
 
 
 class ICMPPing:
-    def __init__(self, target_addr):
+    def __init__(self):
         self.packet_id = os.getpid() & 0xffff
         self.timeout = 2
         self.sequence_num = 0
@@ -51,6 +51,7 @@ class ICMPPing:
                 dst_addr = socket.gethostbyname(target_addr)
             except socket.gaierror as e:
                 print('Error: cannot resolve hostname %s' % (target_addr))
+                return
         else:
             dst_addr = str(target_addr)# address currently in IPv4 format
 
@@ -60,15 +61,13 @@ class ICMPPing:
         except socket.error as e:
             print("Error: script requires administator privileges")
             sys.exit()# cannot access sockets without admin privileges on Windows
-            return
 
         icmp_socket.settimeout(self.timeout)
 
         # send ICMP Echo Request to target
         try:
-            bytes_sent = icmp_socket.sendto(self.packet, (dst_addr, 0))
+            icmp_socket.sendto(self.packet, (dst_addr, 0))
             time_sent = time.time()
-            print('Sent %d bytes to %s' % (bytes_sent, dst_addr))
         except socket.error as e:
             traceback.print_exception(e)
             icmp_socket.close()
@@ -82,7 +81,6 @@ class ICMPPing:
             time_received = time.time()
             rtt = time_received - time_sent
         except socket.timeout:
-            print('Request timed out')
             return
         except socket.error as e:
             traceback.print_exception(e)
@@ -106,7 +104,7 @@ class ICMPPing:
         if self.packet_id != packet_id or self.sequence_num != sequence_num:
             return# ID and sequence numbers do not match between Request and Reply
 
-        return True# Echo Reply was received from target and parsed successfully 
+        return True# Echo Reply was received from target and parsed successfully
 
 
 class NetworkScanner:
@@ -119,7 +117,7 @@ class NetworkScanner:
     def worker(self):
         while not self.host_queue.empty():
             addr = self.host_queue.get(timeout=2)
-            ping = ICMPPing(addr)
+            ping = ICMPPing()
 
             if ping.ping_host(addr):
                 print('Found active host: %s' % (addr))
