@@ -22,6 +22,14 @@ def get_checksum(data):
     # invert bits and return 16 bits
     return ~checksum & 0xffff
 
+def check_privileges():
+    try:
+        icmp_socket = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_IP)
+        icmp_socket.close()
+    except socket.error as e:
+        print('Error: script requires administator privileges')
+        sys.exit()# cannot access sockets without admin privileges on Windows
+
 
 class ICMPPing:
     def __init__(self):
@@ -56,12 +64,7 @@ class ICMPPing:
             dst_addr = str(target_addr)# address currently in IPv4 format
 
         # create ICMP socket and set timeout
-        try:
-            icmp_socket = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_IP)
-        except socket.error as e:
-            print("Error: script requires administator privileges")
-            sys.exit()# cannot access sockets without admin privileges on Windows
-
+        icmp_socket = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_IP)
         icmp_socket.settimeout(self.timeout)
 
         # send ICMP Echo Request to target
@@ -166,4 +169,5 @@ class NetworkScanner:
 
 network_addr = sys.argv[1]
 scanner = NetworkScanner(50)
+check_privileges()
 scanner.scan_network(network_addr)
